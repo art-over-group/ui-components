@@ -4,6 +4,12 @@ import type { ComponentType } from "react";
 // Every preview is a client component dragging the library + motion with it.
 // Lazy chunks keep a page's JS limited to the previews it actually renders.
 export const previews: Record<string, ComponentType> = {
+  "motion/color-selector": dynamic(() =>
+    import("./motion/color-selector.preview").then((m) => m.ColorSelectorPreview),
+  ),
+  "motion/breadcrumb": dynamic(() =>
+    import("./motion/breadcrumb.preview").then((m) => m.BreadcrumbPreview),
+  ),
   "agents/chat-app": dynamic(() =>
     import("./agents/chat-app.preview").then(
       (m) => m.ChatAppPreview,
@@ -261,6 +267,9 @@ export const previews: Record<string, ComponentType> = {
   ),
   "motion/number-ticker": dynamic(() =>
     import("./motion/number-ticker.preview").then((m) => m.NumberTickerPreview),
+  ),
+  "charts/composition-chart": dynamic(() =>
+    import("./charts/composition-chart.preview").then((m) => m.CompositionChartPreview),
   ),
   "charts/funnel-chart": dynamic(() =>
     import("./charts/funnel-chart.preview").then((m) => m.FunnelChartPreview),
