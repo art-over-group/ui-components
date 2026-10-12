@@ -2,7 +2,9 @@
 
 Remote [MCP](https://modelcontextprotocol.io) server for the beUI component registries, running on a Cloudflare Worker. It lets AI agents discover, inspect, and install both free beUI components and licensed beUI Pro blocks.
 
-It owns no data — it reads the live `beui.dev/r/*` registry endpoints at runtime (edge-cached), so new components appear without redeploying the worker.
+The free tools read the live `beui.dev/r/*` registry endpoints at runtime
+(edge-cached), so new components appear without redeploying the worker. Each
+request gets a fresh MCP server, with no persistent MCP session state.
 
 ## Connect
 
@@ -12,7 +14,9 @@ Add to your MCP client (Claude Desktop, Cursor, etc.):
 https://mcp.beui.dev/mcp
 ```
 
-Streamable HTTP is recommended. An SSE endpoint (`/sse`) exists for legacy clients.
+Use Streamable HTTP. The legacy `/sse` endpoint and its message routes have been
+removed and return `410`. Clients configured for SSE must switch their transport
+to Streamable HTTP and use `/mcp`. Standalone GET streams at `/mcp` return `405`.
 
 ## Connect to beUI Pro
 
@@ -78,3 +82,10 @@ bun run deploy
 Requires `beui.dev` on Cloudflare. Wrangler provisions the `mcp.beui.dev` custom domain on first deploy (see `routes` in `wrangler.jsonc`). To point at a different registry, set the `REGISTRY_URL` var.
 
 OAuth also requires the `OAUTH_KV` namespace configured in `wrangler.jsonc`.
+
+## Historical session storage
+
+The old `BeUiMcp` Durable Object namespace was retired by the
+`v2-retire-session-storage` delete migration. Public MCP requests do not use
+Durable Objects. Pro authentication continues to use the separate `OAUTH_KV`
+namespace.
