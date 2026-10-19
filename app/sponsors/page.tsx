@@ -3,8 +3,13 @@ import { ArrowRight, ArrowUpRight, Check, CircleCheck, Gem, Medal, Trophy } from
 import type { Metadata } from "next";
 import Image from "next/image";
 import Link from "next/link";
+import type { ReactNode } from "react";
 import { CopyButton } from "@/components/app/docs/copy-button";
 import { PressLink } from "@/components/app/press-link";
+import {
+  OpenSponsorSlot,
+  type OpenSponsorSlotSize,
+} from "@/components/app/sponsors/open-sponsor-slot";
 import { SponsorPlanBeam } from "@/components/app/sponsors/sponsor-plan-beam";
 import { cn } from "@/lib/utils";
 
@@ -37,21 +42,207 @@ const PLAN_STYLES = {
     card: "border-border bg-card shadow-[0_24px_80px_-48px_rgba(255,255,255,0.75)]",
     icon: "border border-border bg-muted text-foreground",
     Icon: Gem,
+    chip: "border-accent/30 bg-accent/10",
+    // On phones a filled card takes the full row and open slots pair up.
+    grid: "grid-cols-2 md:grid-cols-3",
+    filled: "col-span-2 md:col-span-1",
+    slot: "lg",
   },
   platinum: {
     card: "border-border bg-card",
     icon: "border border-border bg-muted text-foreground",
     Icon: Trophy,
+    chip: "border-border bg-muted",
+    grid: "grid-cols-2",
+    filled: "",
+    slot: "sm",
   },
   silver: {
     card: "border-border bg-card",
     icon: "border border-border bg-muted text-foreground",
     Icon: Medal,
+    chip: "border-border bg-muted",
+    grid: "grid-cols-2",
+    filled: "",
+    slot: "sm",
   },
 } satisfies Record<
   string,
-  { card: string; icon: string; Icon: LucideIcon }
+  {
+    card: string;
+    icon: string;
+    Icon: LucideIcon;
+    chip: string;
+    grid: string;
+    filled: string;
+    slot: OpenSponsorSlotSize;
+  }
 >;
+
+type SponsorTone = keyof typeof PLAN_STYLES;
+
+type DiamondSponsor = {
+  name: string;
+  tagline: string;
+  domain: string;
+  /** Icon basename in /public/sponsors, with -light and -dark variants. */
+  icon: string;
+};
+
+const DIAMOND_SPONSORS: DiamondSponsor[] = [
+  {
+    name: "Tracwell",
+    tagline: "Turn visitor insights into growth",
+    domain: "tracwell.app",
+    icon: "tracwell-icon",
+  },
+  {
+    name: "Illos",
+    tagline: "Animated illustrations for product sites",
+    domain: "illos.dev",
+    icon: "illos-icon",
+  },
+];
+
+function DiamondSponsorCard({ name, tagline, domain, icon }: DiamondSponsor) {
+  return (
+    <Link
+      href={`https://${domain}/?utm_source=beui&utm_medium=referral&utm_campaign=sponsorship&utm_content=diamond_sponsor`}
+      target="_blank"
+      rel="noreferrer noopener"
+      className="block h-full min-w-0 rounded-3xl border border-border bg-background p-2 transition-colors hover:border-border-strong focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-ring"
+    >
+      <div className="flex min-h-40 items-center justify-center gap-3 rounded-2xl border border-border bg-linear-to-t from-accent/10 to-card px-4 py-6">
+        <Image
+          src={`/sponsors/${icon}-light.svg`}
+          alt=""
+          width={56}
+          height={56}
+          className="size-14 shrink-0 dark:hidden"
+        />
+        <Image
+          src={`/sponsors/${icon}-dark.svg`}
+          alt=""
+          width={56}
+          height={56}
+          className="hidden size-14 shrink-0 dark:block"
+        />
+        <div>
+          <h3 className="font-display text-2xl font-semibold tracking-tight text-foreground">
+            {name}
+          </h3>
+          <p className="mt-1 max-w-44 text-xs leading-relaxed text-muted-foreground">
+            {tagline}
+          </p>
+        </div>
+      </div>
+      <div className="flex items-center justify-between gap-4 px-3 py-4">
+        <span className="text-sm font-medium text-foreground">{domain}</span>
+        <ArrowRight aria-hidden="true" className="size-5 shrink-0 text-muted-foreground" />
+      </div>
+    </Link>
+  );
+}
+
+// Filled slots per tier. Adding a sponsor here closes one open slot.
+const CURRENT_SPONSORS: Record<SponsorTone, { id: string; card: ReactNode }[]> = {
+  diamond: DIAMOND_SPONSORS.map((sponsor) => ({
+    id: sponsor.domain,
+    card: <DiamondSponsorCard {...sponsor} />,
+  })),
+  platinum: [],
+  silver: [],
+};
+
+function planTargetId(tone: SponsorTone) {
+  return `sponsor-plan-${tone}`;
+}
+
+function openSlotCount(tone: SponsorTone, slots: number) {
+  return Math.max(0, slots - CURRENT_SPONSORS[tone].length);
+}
+
+function SponsorTier({
+  name,
+  price,
+  tone,
+  slots,
+}: {
+  name: string;
+  price: string;
+  tone: SponsorTone;
+  slots: number;
+}) {
+  const styles = PLAN_STYLES[tone];
+  const Icon = styles.Icon;
+  const sponsors = CURRENT_SPONSORS[tone];
+  const open = openSlotCount(tone, slots);
+  const headingId = `${tone}-sponsors`;
+
+  return (
+    <section aria-labelledby={headingId} className="min-w-0">
+      <div className="flex flex-wrap items-center gap-3">
+        <h2
+          id={headingId}
+          className={cn(
+            "inline-flex items-center gap-2 rounded-lg border px-3 py-2 font-mono text-sm font-medium text-foreground",
+            styles.chip,
+          )}
+        >
+          <Icon aria-hidden="true" className="size-4" />
+          {name}
+        </h2>
+        <p className="text-xs text-muted-foreground">
+          {open > 0 ? `${open} of ${slots} open` : "All slots taken"}
+        </p>
+      </div>
+      <div className={cn("mt-4 grid gap-4", styles.grid)}>
+        {sponsors.map((sponsor) => (
+          <div key={sponsor.id} className={styles.filled}>
+            {sponsor.card}
+          </div>
+        ))}
+        {Array.from({ length: open }, (_, index) => (
+          <OpenSponsorSlot
+            // Open slots are interchangeable placeholders with no identity.
+            // biome-ignore lint/suspicious/noArrayIndexKey: see above
+            key={index}
+            tier={name}
+            price={price}
+            targetId={planTargetId(tone)}
+            size={styles.slot}
+          />
+        ))}
+      </div>
+    </section>
+  );
+}
+
+// Updated by hand from the Tracwell dashboard.
+const TRAFFIC_UPDATED_AT = "Oct 12, 2026";
+const TRAFFIC_STATS = [
+  { period: "Last 30 days", visitors: 50_696, pageViews: 867_232 },
+  { period: "Last 90 days", visitors: 150_109, pageViews: 2_198_130 },
+];
+
+const compactNumber = new Intl.NumberFormat("en-US", {
+  notation: "compact",
+  maximumFractionDigits: 1,
+});
+
+function TrafficStat({ label, value }: { label: string; value: number }) {
+  return (
+    <div className="rounded-2xl border border-border bg-background px-4 py-4">
+      <dt className="text-sm text-muted-foreground">{label}</dt>
+      <dd
+        className="mt-1 text-3xl font-semibold tabular-nums tracking-tight text-foreground"
+        title={value.toLocaleString("en-US")}
+      >
+        {compactNumber.format(value)}
+      </dd>
+    </div>
+  );
+}
 
 function truncateAddress(address: string) {
   return address.length > 14
@@ -81,6 +272,7 @@ function SponsorPlanCard({
   paymentUrl,
   featured = false,
   tone,
+  slots,
 }: {
   name: string;
   price: string;
@@ -88,17 +280,21 @@ function SponsorPlanCard({
   benefits: string[];
   paymentUrl?: string;
   featured?: boolean;
-  tone: keyof typeof PLAN_STYLES;
+  tone: SponsorTone;
+  slots: number;
 }) {
   const styles = PLAN_STYLES[tone];
   const Icon = styles.Icon;
   const href = paymentUrl || CONTACT_URL;
+  const open = openSlotCount(tone, slots);
 
   return (
     <SponsorPlanBeam enabled={featured} className="h-full">
       <div
+        id={planTargetId(tone)}
+        tabIndex={-1}
         className={cn(
-          "relative flex h-full flex-col overflow-hidden rounded-3xl border p-5",
+          "relative flex h-full scroll-mt-24 flex-col overflow-hidden rounded-3xl border p-5 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-ring",
           styles.card,
         )}
       >
@@ -125,11 +321,14 @@ function SponsorPlanCard({
             {description}
           </p>
         </div>
-        <div className="mt-6 border-t border-border pt-5">
+        <div className="mt-6 flex items-baseline gap-2 border-t border-border pt-5">
           <span className="text-4xl font-semibold tracking-tight text-foreground">
             {price}
           </span>
-          <span className="ml-2 text-sm text-muted-foreground">/mo</span>
+          <span className="text-sm text-muted-foreground">/mo</span>
+          <span className="ml-auto text-xs text-muted-foreground">
+            {open > 0 ? `${open} of ${slots} open` : "Full"}
+          </span>
         </div>
         <ul className="mb-6 mt-6 min-h-32 space-y-3 text-sm text-foreground">
           {benefits.map((benefit) => (
@@ -174,6 +373,7 @@ export default async function SponsorsPage({
       description:
         "Maximum visibility for teams that want their logo in the highest-signal sponsor slot.",
       benefits: [
+        "Logo on the home page, right below the hero",
         "Largest logo placement on the sponsors page",
         "Largest logo placement in the docs sidebar",
         "Largest logo placement in the README",
@@ -185,6 +385,7 @@ export default async function SponsorsPage({
         process.env.DODO_SPONSOR_DIAMOND_URL,
       featured: true,
       tone: "diamond" as const,
+      slots: 3,
     },
     {
       name: "Platinum",
@@ -201,6 +402,7 @@ export default async function SponsorsPage({
         process.env.DODO_SPONSOR_PLATINUM_SUBSCRIPTION_URL ??
         process.env.DODO_SPONSOR_PLATINUM_URL,
       tone: "platinum" as const,
+      slots: 2,
     },
     {
       name: "Silver",
@@ -217,6 +419,7 @@ export default async function SponsorsPage({
         process.env.DODO_SPONSOR_SILVER_SUBSCRIPTION_URL ??
         process.env.DODO_SPONSOR_SILVER_URL,
       tone: "silver" as const,
+      slots: 2,
     },
   ];
 
@@ -262,56 +465,58 @@ export default async function SponsorsPage({
         </div>
       </div>
 
-      <section aria-labelledby="current-sponsors" className="mt-12">
-        <h2
-          id="current-sponsors"
-          className="inline-flex items-center gap-2 rounded-lg border border-accent/30 bg-accent/10 px-3 py-2 font-mono text-sm font-medium text-foreground"
-        >
-          <Gem aria-hidden="true" className="size-4" />
-          Diamond
-        </h2>
-        <div className="mt-5 grid gap-4 md:grid-cols-3">
-          <Link
-            href="https://tracwell.app/?utm_source=beui&utm_medium=referral&utm_campaign=sponsorship&utm_content=diamond_sponsor"
-            target="_blank"
-            rel="noreferrer noopener"
-            className="block min-w-0 rounded-3xl border border-border bg-background p-2 transition-colors hover:border-border-strong focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-ring"
+      <section aria-labelledby="traffic-stats" className="mt-12">
+        <div className="flex flex-wrap items-baseline justify-between gap-2">
+          <h2
+            id="traffic-stats"
+            className="text-xs font-semibold uppercase tracking-wider text-muted-foreground"
           >
-            <div className="flex min-h-40 items-center justify-center gap-3 rounded-2xl border border-border bg-linear-to-t from-accent/10 to-card px-4 py-6">
-              <Image
-                src="/sponsors/tracwell-icon-light.svg"
-                alt=""
-                width={56}
-                height={56}
-                className="size-14 shrink-0 dark:hidden"
-              />
-              <Image
-                src="/sponsors/tracwell-icon-dark.svg"
-                alt=""
-                width={56}
-                height={56}
-                className="hidden size-14 shrink-0 dark:block"
-              />
-              <div>
-                <h3 className="font-display text-2xl font-semibold tracking-tight text-foreground">
-                  Tracwell
-                </h3>
-                <p className="mt-1 max-w-44 text-xs leading-relaxed text-muted-foreground">
-                  Turn visitor insights into growth
-                </p>
-              </div>
+            Audience
+          </h2>
+          <p className="text-xs text-muted-foreground">
+            Analytics by Tracwell, updated {TRAFFIC_UPDATED_AT}
+          </p>
+        </div>
+        <div className="mt-3 grid gap-4 md:grid-cols-2">
+          {TRAFFIC_STATS.map((stat) => (
+            <div
+              key={stat.period}
+              className="rounded-3xl border border-border bg-card p-2"
+            >
+              <h3 className="px-3 pb-2 pt-2 text-sm font-medium text-foreground">
+                {stat.period}
+              </h3>
+              <dl className="grid grid-cols-2 gap-2">
+                <TrafficStat label="Visitors" value={stat.visitors} />
+                <TrafficStat label="Page views" value={stat.pageViews} />
+              </dl>
             </div>
-            <div className="flex items-center justify-between gap-4 px-3 py-4">
-              <span className="text-sm font-medium text-foreground">
-                tracwell.app
-              </span>
-              <ArrowRight aria-hidden="true" className="size-5 shrink-0 text-muted-foreground" />
-            </div>
-          </Link>
+          ))}
         </div>
       </section>
 
-      <section id="sponsor-plans" className="mt-12">
+      <div className="mt-12 space-y-10">
+        {sponsorPlans
+          .filter((plan) => plan.tone === "diamond")
+          .map((plan) => (
+            <SponsorTier key={plan.name} {...plan} />
+          ))}
+        {/* Platinum and Silver share a row; the 3:2 split keeps each
+            Platinum slot wider than a Silver one. */}
+        <div className="grid gap-10 md:grid-cols-[3fr_2fr] md:gap-4">
+          {sponsorPlans
+            .filter((plan) => plan.tone !== "diamond")
+            .map((plan) => (
+              <SponsorTier key={plan.name} {...plan} />
+            ))}
+        </div>
+      </div>
+
+      <section
+        id="sponsor-plans"
+        aria-label="Sponsor plans"
+        className="mt-12 scroll-mt-24"
+      >
         <div className="grid gap-4 md:grid-cols-3">
           {sponsorPlans.map((plan) => (
             <SponsorPlanCard key={plan.name} {...plan} />

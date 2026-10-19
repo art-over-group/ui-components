@@ -7,12 +7,15 @@ import { useEffect, useState } from "react";
 import { SidebarNav } from "@/components/app/chrome/site-sidebar";
 import { BottomSheet } from "@/components/motion/bottom-sheet";
 import { Button } from "@/components/motion/button";
+import { PlatformSwitch } from "@/components/app/docs/native/platform-switch";
+import { hasPlatformSwitch, hasSiteSidebar } from "@/lib/component-paths";
 import { cn } from "@/lib/utils";
 
 /** Mobile nav: a header hamburger that opens the sidebar list in beUI's own bottom sheet. */
 export function MobileNav() {
   const [open, setOpen] = useState(false);
   const pathname = usePathname();
+  const sidebarPage = hasSiteSidebar(pathname);
 
   // Covers navigation that doesn't go through a sheet link (back/forward).
   // biome-ignore lint/correctness/useExhaustiveDependencies: pathname is the trigger — close the sheet on any route change.
@@ -20,8 +23,19 @@ export function MobileNav() {
     setOpen(false);
   }, [pathname]);
 
+  useEffect(() => {
+    if (!open) return;
+    const desktop = window.matchMedia(sidebarPage ? "(min-width: 768px)" : "(min-width: 1280px)");
+    const closeOnDesktop = () => {
+      if (desktop.matches) setOpen(false);
+    };
+    closeOnDesktop();
+    desktop.addEventListener("change", closeOnDesktop);
+    return () => desktop.removeEventListener("change", closeOnDesktop);
+  }, [open, sidebarPage]);
+
   return (
-    <div className="md:hidden">
+    <div className={sidebarPage ? "md:hidden" : "xl:hidden"}>
       <Button
         variant="ghost"
         size="icon"
@@ -39,6 +53,8 @@ export function MobileNav() {
         snapPoints={[0.85]}
       >
         <div className="flex flex-col gap-5 pt-2">
+          {/* The list below follows the platform, so pick it here too. */}
+          {hasPlatformSwitch(pathname) ? <PlatformSwitch layout="block" /> : null}
           <nav className="flex flex-wrap gap-1">
             <Link
               href="/components/motion"

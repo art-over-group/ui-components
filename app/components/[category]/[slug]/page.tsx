@@ -1,8 +1,12 @@
-import { categoryPath, componentPath } from "@/lib/component-paths";
+import {
+  categoryPath,
+  componentPath,
+  nativeComponentPath,
+} from "@/lib/component-paths";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import Link from "next/link";
-import { ChevronRight } from "lucide-react";
+import { ArrowRight, ChevronRight, Smartphone } from "lucide-react";
 import {
   findCategory,
   findComponent,
@@ -21,6 +25,7 @@ import {
 } from "@/components/motion/tabs";
 import { NewBadge } from "@/components/app/docs/new-badge";
 import { ComponentCard } from "@/components/app/docs/component-card";
+import { ComponentAbout } from "@/components/app/docs/component-about";
 import { ComponentGuide } from "@/components/app/docs/component-guide";
 import { CopyPage } from "@/components/app/docs/copy-page";
 import { JsonLd } from "@/components/app/analytics/json-ld";
@@ -28,12 +33,18 @@ import { getPreview, previews } from "@/components/previews";
 import { pageUrlFor, withSignature } from "@/lib/signature";
 import { readSourceFile } from "@/lib/source-files";
 import { getComponentProps } from "@/lib/props-extractor";
+import { componentAbout } from "@/lib/component-about";
 import { componentDates } from "@/lib/component-dates";
+import { findNativeComponent } from "@/lib/native";
+import { PlatformSwitch } from "@/components/app/docs/native/platform-switch";
+import { RelatedSection } from "@/components/app/docs/related-section";
 import {
   breadcrumbJsonLd,
   componentJsonLd,
   componentKeywords,
   componentMetaDescription,
+  componentSeoTitle,
+  faqJsonLd,
   relatedComponents,
 } from "@/lib/seo";
 
@@ -66,7 +77,7 @@ export async function generateMetadata({
     ? `/${installSlugs[0]}.json`
     : `/${comp.slug}.json`;
 
-  const title = comp.guide?.seo.title ?? `${comp.name} · React motion component`;
+  const title = componentSeoTitle(comp);
   const ogTitle = `${title} · beUI`;
   const pageUrl = componentPath(cat.slug, comp.slug);
   const imageUrl = `/api/og?component=${comp.slug}`;
@@ -148,52 +159,10 @@ export default async function ComponentPage({
   const creditUrl = comp.credit ? new URL(comp.credit.url) : null;
   creditUrl?.searchParams.set("ref", "beui");
 
-  return (
-    <div className="min-w-0">
-      <JsonLd
-        data={[
-          breadcrumbJsonLd([
-            { name: "beUI", path: "/" },
-            { name: cat.name, path: categoryPath(cat.slug) },
-            { name: comp.name, path: componentPath(cat.slug, comp.slug) },
-          ]),
-          componentJsonLd(cat, comp),
-        ]}
-      />
-      <div id="overview" className="scroll-mt-24">
-        <nav
-          aria-label="Breadcrumb"
-          className="flex items-center gap-1.5 text-sm"
-        >
-          <Link
-            href={categoryPath(cat.slug)}
-            className="text-muted-foreground transition-colors hover:text-foreground"
-          >
-            {cat.name}
-          </Link>
-          <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />
-          <span className="font-medium text-foreground">{comp.name}</span>
-        </nav>
-        <div className="mt-4 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-          <div className="flex items-center gap-3">
-            <h1 className="text-3xl font-medium tracking-tight text-foreground">
-              {comp.name}
-            </h1>
-            {comp.badge === "new" ? (
-              <NewBadge launchedAt={comp.launchedAt} className="mt-1" />
-            ) : null}
-          </div>
-          <CopyPage
-            pageUrl={pageUrlFor(cat.slug, comp.slug)}
-            markdownPath={`${componentPath(cat.slug, comp.slug)}.md`}
-            componentName={comp.name}
-          />
-        </div>
-        <p className="mt-2 max-w-2xl text-muted-foreground">
-          {comp.description}
-        </p>
-      </div>
-
+  const nativeComponent = findNativeComponent(comp.slug);
+  const about = componentAbout[comp.slug];
+  const webContent = (
+    <>
       {comp.examples?.length ? (
         <div className="mt-10 flex flex-col gap-12">
           {comp.examples.map((ex, index) => (
@@ -245,32 +214,84 @@ export default async function ComponentPage({
           </div>
         </section>
       ) : null}
+    </>
+  );
+
+  return (
+    <div className="min-w-0">
+      <JsonLd
+        data={[
+          breadcrumbJsonLd([
+            { name: "beUI", path: "/" },
+            { name: cat.name, path: categoryPath(cat.slug) },
+            { name: comp.name, path: componentPath(cat.slug, comp.slug) },
+          ]),
+          componentJsonLd(cat, comp),
+          ...(about
+            ? [faqJsonLd(componentPath(cat.slug, comp.slug), about.faq)]
+            : []),
+        ]}
+      />
+      <div id="overview" className="scroll-mt-24">
+        <nav
+          aria-label="Breadcrumb"
+          className="flex items-center gap-1.5 text-sm"
+        >
+          <Link
+            href={categoryPath(cat.slug)}
+            className="text-muted-foreground transition-colors hover:text-foreground"
+          >
+            {cat.name}
+          </Link>
+          <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />
+          <span className="font-medium text-foreground">{comp.name}</span>
+        </nav>
+        <div className="mt-4 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+          <div className="flex items-center gap-3">
+            <h1 className="text-3xl font-medium tracking-tight text-foreground">
+              {comp.name}
+            </h1>
+            {comp.badge === "new" ? (
+              <NewBadge launchedAt={comp.launchedAt} className="mt-1" />
+            ) : null}
+          </div>
+          <CopyPage
+            pageUrl={pageUrlFor(cat.slug, comp.slug)}
+            markdownPath={`${componentPath(cat.slug, comp.slug)}.md`}
+            componentName={comp.name}
+          />
+        </div>
+        <p className="mt-2 max-w-2xl text-muted-foreground">
+          {comp.description}
+        </p>
+      </div>
+
+      {/* Wide screens pick the platform from the right sidebar. */}
+      <div className="mt-6 xl:hidden">
+        <PlatformSwitch />
+      </div>
+      {webContent}
 
       {comp.guide ? <ComponentGuide guide={comp.guide} /> : null}
 
-      {related.length ? (
-        <section
-          id="related-components"
-          className="mt-12 scroll-mt-24 border-t border-border pt-8"
+      {nativeComponent ? (
+        <Link
+          href={nativeComponentPath(comp.slug)}
+          className="group mt-12 flex items-center gap-3 rounded-2xl border border-border bg-card px-4 py-3 text-sm outline-none transition-colors hover:border-(--color-border-strong) focus-visible:ring-2 focus-visible:ring-ring"
         >
-          <h2 className="text-sm font-semibold text-foreground">
-            Related components
-          </h2>
-          <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {related.map((rel) => (
-              <ComponentCard
-                key={`${rel.category}/${rel.slug}`}
-                categorySlug={rel.category}
-                slug={rel.slug}
-                name={rel.name}
-                description={rel.description}
-                badge={rel.badge}
-                launchedAt={rel.launchedAt}
-              />
-            ))}
-          </div>
-        </section>
+          <Smartphone aria-hidden="true" className="size-4 shrink-0 text-muted-foreground" />
+          <span className="min-w-0 flex-1">
+            <span className="font-medium text-foreground">Also on React Native.</span>{" "}
+            <span className="text-muted-foreground">{nativeComponent.description}</span>
+          </span>
+          <ArrowRight
+            aria-hidden="true"
+            className="size-4 shrink-0 text-muted-foreground transition-transform duration-150 group-hover:translate-x-0.5 motion-reduce:transition-none"
+          />
+        </Link>
       ) : null}
+      <RelatedSection related={related} />
+      {about ? <ComponentAbout name={comp.name} about={about} /> : null}
 
       {comp.credit ? (
         <section className="mt-12 border-t border-border pt-8">
@@ -323,7 +344,7 @@ async function ExampleBlock({
     <section id={example.slug} className="scroll-mt-24">
       <div className="mb-4 flex items-baseline justify-between gap-3">
         <div className="flex items-center gap-2">
-          <h2 className="text-xl font-semibold tracking-tight text-foreground">
+          <h2 className="text-xl font-medium tracking-tight text-foreground">
             {example.name}
           </h2>
           {example.badge === "new" ? (
@@ -342,9 +363,27 @@ async function ExampleBlock({
       <div id={`${example.slug}-preview`} className="scroll-mt-24">
         <Tabs defaultValue="preview" variant="pill">
           <TabsList>
-            <TabsTrigger value="preview">Preview</TabsTrigger>
-            <TabsTrigger value="usage">Usage</TabsTrigger>
-            <TabsTrigger value="source">Code</TabsTrigger>
+            <TabsTrigger
+              value="preview"
+              indicatorClassName="bg-background"
+              className="aria-[selected=true]:text-foreground [&_[data-tabs-label]]:text-foreground"
+            >
+              Preview
+            </TabsTrigger>
+            <TabsTrigger
+              value="usage"
+              indicatorClassName="bg-background"
+              className="aria-[selected=true]:text-foreground [&_[data-tabs-label]]:text-foreground"
+            >
+              Usage
+            </TabsTrigger>
+            <TabsTrigger
+              value="source"
+              indicatorClassName="bg-background"
+              className="aria-[selected=true]:text-foreground [&_[data-tabs-label]]:text-foreground"
+            >
+              Code
+            </TabsTrigger>
           </TabsList>
           <TabsContent value="preview" className="mt-4">
             <div className="flex min-h-[260px] items-center justify-center py-10">
@@ -418,9 +457,27 @@ async function DefaultTabs({
       <h2 className="sr-only">Preview</h2>
       <Tabs defaultValue="preview" variant="pill">
         <TabsList>
-          <TabsTrigger value="preview">Preview</TabsTrigger>
-          <TabsTrigger value="usage">Usage</TabsTrigger>
-          <TabsTrigger value="source">Code</TabsTrigger>
+          <TabsTrigger
+            value="preview"
+            indicatorClassName="bg-background"
+            className="aria-[selected=true]:text-foreground [&_[data-tabs-label]]:text-foreground"
+          >
+            Preview
+          </TabsTrigger>
+          <TabsTrigger
+            value="usage"
+            indicatorClassName="bg-background"
+            className="aria-[selected=true]:text-foreground [&_[data-tabs-label]]:text-foreground"
+          >
+            Usage
+          </TabsTrigger>
+          <TabsTrigger
+            value="source"
+            indicatorClassName="bg-background"
+            className="aria-[selected=true]:text-foreground [&_[data-tabs-label]]:text-foreground"
+          >
+            Code
+          </TabsTrigger>
         </TabsList>
         <TabsContent value="preview" className="mt-4">
           <div className="flex min-h-[320px] items-center justify-center py-10">
