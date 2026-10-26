@@ -4,6 +4,48 @@ import type { ComponentType } from "react";
 // Every preview is a client component dragging the library + motion with it.
 // Lazy chunks keep a page's JS limited to the previews it actually renders.
 export const previews: Record<string, ComponentType> = {
+  "motion/alert": dynamic(() =>
+    import("./motion/alert.preview").then((m) => m.AlertPreview),
+  ),
+  "motion/collapsible": dynamic(() =>
+    import("./motion/collapsible.preview").then((m) => m.CollapsiblePreview),
+  ),
+  "motion/aspect-ratio": dynamic(() =>
+    import("./motion/aspect-ratio.preview").then((m) => m.AspectRatioPreview),
+  ),
+  "motion/timeline": dynamic(() =>
+    import("./motion/timeline.preview").then((m) => m.TimelinePreview),
+  ),
+  "motion/arc-picker": dynamic(() =>
+    import("./motion/arc-picker.preview").then((m) => m.ArcPickerPreview),
+  ),
+  "agents/voice-orb": dynamic(() =>
+    import("./agents/voice-orb.preview").then((m) => m.VoiceOrbPreview),
+  ),
+  "motion/sortable-stack": dynamic(() =>
+    import("./motion/sortable-stack.preview").then((m) => m.SortableListPreview),
+  ),
+  "motion/morphing-lightbox": dynamic(() =>
+    import("./motion/morphing-lightbox.preview").then((m) => m.MorphingLightboxPreview),
+  ),
+  "motion/image-viewer": dynamic(() =>
+    import("./motion/morphing-lightbox.preview").then((m) => m.MorphingLightboxPreview),
+  ),
+  "motion/date-range-picker": dynamic(() =>
+    import("./motion/date-range-picker.preview").then((m) => m.DateRangePickerPreview),
+  ),
+  "motion/card": dynamic(() =>
+    import("./motion/card.preview").then((m) => m.CardPreview),
+  ),
+  "motion/color-picker": dynamic(() =>
+    import("./motion/color-picker.preview").then((m) => m.ColorPickerPreview),
+  ),
+  "motion/color-selector": dynamic(() =>
+    import("./motion/color-selector.preview").then((m) => m.ColorSelectorPreview),
+  ),
+  "motion/breadcrumb": dynamic(() =>
+    import("./motion/breadcrumb.preview").then((m) => m.BreadcrumbPreview),
+  ),
   "agents/chat-app": dynamic(() =>
     import("./agents/chat-app.preview").then(
       (m) => m.ChatAppPreview,
@@ -168,8 +210,14 @@ export const previews: Record<string, ComponentType> = {
       (m) => m.MorphingSearchPreview,
     ),
   ),
+  "blocks/morphing-search-chips": dynamic(() =>
+    import("./blocks/morphing-search-chips.preview").then((m) => m.MorphingSearchChipsPreview),
+  ),
   "blocks/feedback-widget": dynamic(() =>
     import("./blocks/feedback-widget.preview").then((m) => m.FeedbackWidgetPreview),
+  ),
+  "blocks/card-dealer": dynamic(() =>
+    import("./blocks/card-dealer.preview").then((m) => m.CardDealerPreview),
   ),
   "blocks/bloom-menu": dynamic(() =>
     import("./blocks/bloom-menu.preview").then((m) => m.BloomMenuPreview),
@@ -262,6 +310,18 @@ export const previews: Record<string, ComponentType> = {
   "motion/number-ticker": dynamic(() =>
     import("./motion/number-ticker.preview").then((m) => m.NumberTickerPreview),
   ),
+  "charts/treemap": dynamic(() =>
+    import("./charts/treemap.preview").then((m) => m.TreemapPreview),
+  ),
+  "charts/volume-profile": dynamic(() =>
+    import("./charts/volume-profile.preview").then((m) => m.VolumeProfilePreview),
+  ),
+  "charts/status-bar": dynamic(() =>
+    import("./charts/status-bar.preview").then((m) => m.StatusBarPreview),
+  ),
+  "charts/composition-chart": dynamic(() =>
+    import("./charts/composition-chart.preview").then((m) => m.CompositionChartPreview),
+  ),
   "charts/funnel-chart": dynamic(() =>
     import("./charts/funnel-chart.preview").then((m) => m.FunnelChartPreview),
   ),
@@ -270,6 +330,15 @@ export const previews: Record<string, ComponentType> = {
   ),
   "charts/bump-chart": dynamic(() =>
     import("./charts/bump-chart.preview").then((m) => m.BumpChartPreview),
+  ),
+  "charts/candlestick-chart": dynamic(() =>
+    import("./charts/candlestick-chart.preview").then((m) => m.CandlestickChartPreview),
+  ),
+  "charts/sankey-chart": dynamic(() =>
+    import("./charts/sankey-chart.preview").then((m) => m.SankeyChartPreview),
+  ),
+  "charts/donut-chart": dynamic(() =>
+    import("./charts/donut-chart.preview").then((m) => m.DonutChartPreview),
   ),
   "charts/order-book": dynamic(() =>
     import("./charts/order-book.preview").then((m) => m.OrderBookPreview),
@@ -340,8 +409,14 @@ export const previews: Record<string, ComponentType> = {
   "motion/checkbox": dynamic(() =>
     import("./motion/checkbox.preview").then((m) => m.CheckboxPreview),
   ),
+  "motion/checkbox-description": dynamic(() =>
+    import("./motion/checkbox-description.preview").then((m) => m.CheckboxDescriptionPreview),
+  ),
   "motion/radio": dynamic(() =>
     import("./motion/radio.preview").then((m) => m.RadioPreview),
+  ),
+  "motion/radio-description": dynamic(() =>
+    import("./motion/radio-description.preview").then((m) => m.RadioDescriptionPreview),
   ),
   "blocks/otp-input": dynamic(() =>
     import("./blocks/otp-input.preview").then((m) => m.OTPInputPreview),
@@ -393,6 +468,9 @@ export const previews: Record<string, ComponentType> = {
   ),
   "motion/tooltip": dynamic(() =>
     import("./motion/tooltip.preview").then((m) => m.TooltipPreview),
+  ),
+  "motion/tooltip-toolbar": dynamic(() =>
+    import("./motion/tooltip-toolbar.preview").then((m) => m.TooltipToolbarPreview),
   ),
   "motion/context-menu": dynamic(() =>
     import("./motion/context-menu.preview").then((m) => m.ContextMenuPreview),

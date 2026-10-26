@@ -1,6 +1,14 @@
 "use client";
 
-import { AnimatePresence, motion, useReducedMotion } from "motion/react";
+import {
+  AnimatePresence,
+  animate,
+  motion,
+  useMotionValue,
+  usePresence,
+  useReducedMotion,
+  useTransform,
+} from "motion/react";
 import {
   cloneElement,
   createContext,
@@ -8,17 +16,20 @@ import {
   type ReactElement,
   type ReactNode,
   type Ref,
+  type RefObject,
   useCallback,
   useContext,
   useEffect,
   useId,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
 } from "react";
 import { createPortal } from "react-dom";
 import { usePopoverPortalPosition } from "@/components/motion/popover-position";
-import { EASE_OUT, SPRING_PANEL } from "@/lib/ease";
+import { EASE_OUT } from "@/lib/ease";
+import { FOCUSABLE_SELECTOR } from "@/lib/focusable";
 import { cn } from "@/lib/utils";
 
 type Side = "top" | "bottom";
@@ -34,6 +45,10 @@ type MorphContextValue = {
   triggerRef: React.MutableRefObject<HTMLElement | null>;
   registerTrigger: (node: HTMLElement | null) => void;
   contentRef: React.MutableRefObject<HTMLDivElement | null>;
+  /** Arms or disarms moving focus into the panel as it next appears. */
+  armFocusOnOpen: (armed: boolean) => void;
+  /** Reads and disarms the flag set by `armFocusOnOpen`. */
+  takeFocusOnOpen: () => boolean;
 };
 
 const MorphContext = createContext<MorphContextValue | null>(null);
@@ -55,9 +70,10 @@ export interface MorphPopoverProps {
 }
 
 /**
- * A popover whose panel morphs open from the trigger corner: it's laid out at
- * full size but clipped to the corner nearest the trigger, then unclips as one
- * piece. Closes on outside pointer / Escape. Controlled or uncontrolled.
+ * A popover whose full-size panel reveals from the corner nearest the trigger
+ * on one spring, then retraces the same clip on close. Content and surface
+ * edges keep their size throughout. Closes on outside pointer / Escape.
+ * Controlled or uncontrolled.
  */
 export function MorphPopover({
   children,
@@ -82,6 +98,33 @@ export function MorphPopover({
     [controlled, onOpenChange],
   );
   const toggle = useCallback(() => setOpen(!open), [setOpen, open]);
+
+  // A keyboard open arms focus for the panel to take as it appears. Any later
+  // key or pointer press disarms it, so an open the parent declined cannot
+  // leave it armed for a later open that nobody asked to focus.
+  const focusOnOpenRef = useRef(false);
+  const disarmRef = useRef<AbortController | null>(null);
+  const armFocusOnOpen = useCallback((armed: boolean) => {
+    disarmRef.current?.abort();
+    disarmRef.current = null;
+    focusOnOpenRef.current = armed;
+    if (!armed) return;
+    const controller = new AbortController();
+    const disarm = () => {
+      focusOnOpenRef.current = false;
+      controller.abort();
+    };
+    const options = { capture: true, signal: controller.signal };
+    document.addEventListener("keydown", disarm, options);
+    document.addEventListener("pointerdown", disarm, options);
+    disarmRef.current = controller;
+  }, []);
+  const takeFocusOnOpen = useCallback(() => {
+    const armed = focusOnOpenRef.current;
+    armFocusOnOpen(false);
+    return armed;
+  }, [armFocusOnOpen]);
+  useEffect(() => () => disarmRef.current?.abort(), []);
 
   // A trigger normally registers itself through MorphPopoverTrigger. It can't
   // when something else already clones the element — a Tooltip wrapping the
@@ -142,8 +185,10 @@ export function MorphPopover({
       triggerRef: anchorRef,
       registerTrigger: setTrigger,
       contentRef,
+      armFocusOnOpen,
+      takeFocusOnOpen,
     }),
-    [open, setOpen, toggle, baseId, anchorRef],
+    [open, setOpen, toggle, baseId, anchorRef, armFocusOnOpen, takeFocusOnOpen],
   );
 
   return (
@@ -172,19 +217,51 @@ function mergeRefs<T>(...refs: Array<Ref<T> | undefined>) {
 /** Wraps a single element, toggling the popover on click. */
 export function MorphPopoverTrigger({ children }: MorphPopoverTriggerProps) {
   const ctx = useMorphContext("MorphPopoverTrigger");
-  if (!isValidElement(children)) return children;
-
   const child = children as ReactElement<Record<string, unknown>>;
-  const childOnClick = child.props.onClick as
+  const childOnClick = child?.props?.onClick as
     | ((e: unknown) => void)
     | undefined;
-  const childRef = (child.props as { ref?: Ref<HTMLElement> }).ref;
+  const childOnKeyDown = child?.props?.onKeyDown as
+    | ((e: unknown) => void)
+    | undefined;
+  const childOnPointerDown = child?.props?.onPointerDown as
+    | ((e: unknown) => void)
+    | undefined;
+  // Set by an Enter or Space keydown on the trigger, cleared by a pointer
+  // press, read by the click that follows.
+  const keyboardRef = useRef(false);
+  const childRef = (child?.props as { ref?: Ref<HTMLElement> } | undefined)
+    ?.ref;
+  // Register once per actual ref change, not once per open-state render.
+  const mergedRef = useMemo(
+    () => mergeRefs(childRef, ctx.registerTrigger),
+    [childRef, ctx.registerTrigger],
+  );
+  if (!isValidElement(children)) return children;
 
   return cloneElement(child, {
     id: ctx.triggerId,
-    ref: mergeRefs(childRef, ctx.registerTrigger),
+    ref: mergedRef,
+    onKeyDown: (e: unknown) => {
+      childOnKeyDown?.(e);
+      const key = (e as { key?: string } | undefined)?.key;
+      keyboardRef.current = key === "Enter" || key === " ";
+    },
+    onPointerDown: (e: unknown) => {
+      childOnPointerDown?.(e);
+      keyboardRef.current = false;
+    },
     onClick: (e: unknown) => {
       childOnClick?.(e);
+      // Enter and Space reach here as a click with `detail` 0 after their
+      // keydown on this element. A pointer click counts at least 1, and a
+      // scripted click() has no keydown before it. Only a keyboard open
+      // moves focus into the panel.
+      const keyboard =
+        keyboardRef.current &&
+        (e as { detail?: number } | undefined)?.detail === 0;
+      keyboardRef.current = false;
+      ctx.armFocusOnOpen(!ctx.open && keyboard);
       ctx.toggle();
     },
     "aria-haspopup": "dialog",
@@ -193,23 +270,19 @@ export function MorphPopoverTrigger({ children }: MorphPopoverTriggerProps) {
   });
 }
 
-const originFor = (side: Side, align: Align) =>
-  `${side === "bottom" ? "top" : "bottom"} ${align === "end" ? "right" : "left"}`;
+// Full-distance clip travel needs a shorter curve than SPRING_PANEL's slow
+// overdamped tail. A non-bouncing spring reaches its rest within 260 ms.
+const MORPH_ENTER = { type: "spring", duration: 0.26, bounce: 0 } as const;
+const MORPH_EXIT = { duration: 0.2, ease: EASE_OUT } as const;
 
-// A clip that hides everything but the corner nearest the trigger, so the
-// panel appears to grow out of it. inset(top right bottom left).
-function clipHidden(side: Side, align: Align, radius: number) {
-  const top = side === "bottom" ? "0%" : "92%";
-  const bottom = side === "bottom" ? "92%" : "0%";
-  const right = align === "end" ? "0%" : "92%";
-  const left = align === "end" ? "92%" : "0%";
-  return `inset(${top} ${right} ${bottom} ${left} round ${radius}px)`;
+// Keep the panel and content at their final size. An inset clip reveals the
+// nearest corner without scaling borders, shadows or keyboard-focus geometry.
+// A full-size clip keeps content at its final coordinates without box-to-box
+// scale correction. One progress value keeps clip and opacity synchronized;
+// clip-path and the shadow may paint, so this is not a compositor-only morph.
+function clipAt(side: Side, align: Align, radius: number, inset: number) {
+  return `inset(${side === "top" ? inset : 0}% ${align === "start" ? inset : 0}% ${side === "bottom" ? inset : 0}% ${align === "end" ? inset : 0}% round ${radius}px)`;
 }
-const clipShown = (radius: number) => `inset(0% 0% 0% 0% round ${radius}px)`;
-
-// Preserve the original spring character on the wrapper, but tween the complex
-// clip-path so it cannot snap when the spring resolves its final distance.
-const MORPH_CLIP_TRANSITION = { duration: 0.32, ease: EASE_OUT } as const;
 
 export interface MorphPopoverContentProps {
   children: ReactNode;
@@ -219,99 +292,263 @@ export interface MorphPopoverContentProps {
   sideOffset?: number;
   /** Panel corner radius, in px. Default 16. */
   radius?: number;
+  /** Draw the surface shadow. Default true. */
+  shadow?: boolean;
+  /**
+   * Runs after the portalled surface is positioned and visible. Passing it
+   * hands focus to the caller: the panel then moves no focus on its own.
+   */
+  onOpenAutoFocus?: (content: HTMLDivElement) => void;
+  /**
+   * Element to focus when the trigger opens the panel by keyboard. Defaults
+   * to the first focusable element in the panel, or the panel itself. A
+   * pointer open does not move focus. Ignored with `onOpenAutoFocus`.
+   */
+  initialFocus?: RefObject<HTMLElement | null>;
   className?: string;
 }
 
-export function MorphPopoverContent({
+export function MorphPopoverContent(props: MorphPopoverContentProps) {
+  const ctx = useMorphContext("MorphPopoverContent");
+  const [portalReady, setPortalReady] = useState(false);
+  useEffect(() => setPortalReady(true), []);
+  if (!portalReady) return null;
+  return createPortal(
+    <AnimatePresence>
+      {ctx.open && <MorphPopoverSurface {...props} />}
+    </AnimatePresence>,
+    document.body,
+  );
+}
+
+// Measurement belongs to the mounted portal session: reopening must not start
+// an entrance at the previous session's coordinates before measuring this one.
+function MorphPopoverSurface({
   children,
   side = "bottom",
   align = "end",
   sideOffset = 8,
   radius = 16,
+  shadow = true,
+  onOpenAutoFocus,
+  initialFocus,
   className,
 }: MorphPopoverContentProps) {
   const ctx = useMorphContext("MorphPopoverContent");
   const reduce = useReducedMotion() ?? false;
-  const [portalReady, setPortalReady] = useState(false);
+  const [isPresent, safeToRemove] = usePresence();
   const layout = usePopoverPortalPosition(
     ctx.triggerRef,
     ctx.contentRef,
-    portalReady && ctx.open,
+    isPresent,
   );
 
-  useEffect(() => setPortalReady(true), []);
-  const left = layout
+  const preferredLeft = layout
     ? align === "end"
       ? layout.trigger.left + layout.trigger.width - layout.content.width
       : layout.trigger.left
     : 0;
+  // Keep larger compositions, such as calendars, inside the viewport. Prefer
+  // the requested side, then use the roomier side when it cannot fit there.
+  const gutter = 12;
+  const below = layout
+    ? Math.max(
+        0,
+        window.innerHeight -
+          layout.trigger.top -
+          layout.trigger.height -
+          sideOffset -
+          gutter,
+      )
+    : 0;
+  const above = layout
+    ? Math.max(0, layout.trigger.top - sideOffset - gutter)
+    : 0;
+  const requestedSpace = side === "bottom" ? below : above;
+  const otherSpace = side === "bottom" ? above : below;
+  const resolvedSide =
+    layout &&
+    layout.content.height > requestedSpace &&
+    otherSpace > requestedSpace
+      ? side === "bottom"
+        ? "top"
+        : "bottom"
+      : side;
+  const availableHeight = resolvedSide === "bottom" ? below : above;
+  const left = layout
+    ? Math.max(
+        gutter,
+        Math.min(
+          preferredLeft,
+          window.innerWidth - layout.content.width - gutter,
+        ),
+      )
+    : 0;
   const top = layout
-    ? side === "bottom"
+    ? resolvedSide === "bottom"
       ? layout.trigger.top + layout.trigger.height + sideOffset
-      : layout.trigger.top - layout.content.height - sideOffset
+      : Math.max(
+          gutter,
+          layout.trigger.top - layout.content.height - sideOffset,
+        )
     : 0;
 
-  // Both directions travel between the exact same hidden/show states. Exit
-  // targets "hidden" directly instead of introducing separate choreography.
-  const wrap = reduce
-    ? undefined
-    : {
-        hidden: { opacity: 0, scale: 0.96, transition: SPRING_PANEL },
-        show: { opacity: 1, scale: 1, transition: SPRING_PANEL },
-      };
-  const clip = reduce
-    ? undefined
-    : {
-        hidden: {
-          clipPath: clipHidden(side, align, radius),
-          transition: MORPH_CLIP_TRANSITION,
-        },
-        show: {
-          clipPath: clipShown(radius),
-          transition: MORPH_CLIP_TRANSITION,
-        },
-      };
+  const progress = useMotionValue(0);
+  const clipPath = useTransform(progress, (p) =>
+    clipAt(resolvedSide, align, radius, 92 * (1 - p)),
+  );
+  const surfaceOpacity = useTransform(progress, [0, 0.15], [0, 1]);
+  // Reduced motion has no travel, so a short fade carries the whole entrance
+  // and exit on its own.
+  const fade = useMotionValue(reduce ? 0 : 1);
+  const ready = layout !== null;
+  const focusedOnOpen = useRef(false);
+  useEffect(() => {
+    if (
+      !ready ||
+      !isPresent ||
+      focusedOnOpen.current ||
+      !ctx.contentRef.current
+    )
+      return;
+    focusedOnOpen.current = true;
+    onOpenAutoFocus?.(ctx.contentRef.current);
+  }, [ready, isPresent, ctx.contentRef, onOpenAutoFocus]);
+  // `safeToRemove` is a new function on every render: AnimatePresence
+  // rebuilds its context each time its parent renders. Read it through a ref
+  // so a render during the exit (a consumer's state change, a list streaming
+  // in) does not restart the exit from where it got to — restarted every
+  // render, it would close in ever smaller steps and never report completion,
+  // leaving an inert, invisible panel mounted for good.
+  const safeToRemoveRef = useRef(safeToRemove);
+  useLayoutEffect(() => {
+    safeToRemoveRef.current = safeToRemove;
+  });
+  useEffect(() => {
+    if (!ready) {
+      if (!isPresent) safeToRemoveRef.current?.();
+      return;
+    }
+    const settle = () => {
+      if (!isPresent) safeToRemoveRef.current?.();
+    };
+    if (reduce) {
+      progress.jump(1);
+      const animation = animate(fade, isPresent ? 1 : 0, {
+        duration: 0.12,
+        onComplete: settle,
+      });
+      return () => animation.stop();
+    }
+    const animation = animate(progress, isPresent ? 1 : 0, {
+      ...(isPresent ? MORPH_ENTER : MORPH_EXIT),
+      onComplete: settle,
+    });
+    return () => animation.stop();
+  }, [fade, progress, ready, isPresent, reduce]);
 
-  // Keep the server and first client render identical, then mount the portal.
-  if (!portalReady) return null;
+  // The wrapper stays `visibility: hidden` until the first measurement, and
+  // focus() inside a hidden subtree is silently ignored. So move focus in the
+  // commit that makes the panel visible, not when it mounts. A CSS transition
+  // on `visibility` can still hold the controls hidden for a moment after
+  // that commit (a reduced-motion reset that gives every element a short
+  // transition-duration does), so while focus rests on the panel or has not
+  // moved, each such transition that ends tries the candidates again, until
+  // the user presses a key or pointer. The effect runs once per open, so it
+  // reads the caller's props through refs: a new ref or callback passed
+  // mid-open must not tear down a pending retry.
+  const initialFocusRef = useRef(initialFocus);
+  const callerFocusesRef = useRef(onOpenAutoFocus !== undefined);
+  useLayoutEffect(() => {
+    initialFocusRef.current = initialFocus;
+    callerFocusesRef.current = onOpenAutoFocus !== undefined;
+  });
+  const { contentRef, takeFocusOnOpen } = ctx;
+  useLayoutEffect(() => {
+    if (!ready || !isPresent) return;
+    if (!takeFocusOnOpen() || callerFocusesRef.current) return;
+    const panel = contentRef.current;
+    const wrapper = panel?.parentElement;
+    if (!panel || !wrapper) return;
+    const from = document.activeElement;
+    const unmoved = () =>
+      document.activeElement === from || document.activeElement === panel;
+    // The selector also matches elements focus() refuses: a hidden input, a
+    // disabled button that carries a tabindex, anything under display: none.
+    // Keep the first candidate that takes focus, else hold it on the panel.
+    const focusFirst = () => {
+      const candidates = [
+        initialFocusRef.current?.current,
+        ...panel.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR),
+      ];
+      for (const candidate of candidates) {
+        if (!candidate) continue;
+        candidate.focus({ preventScroll: true });
+        if (unmoved()) continue;
+        // preventScroll keeps the page still, but it also stops the panel's
+        // own scroll area from bringing a row below the fold into view.
+        candidate.scrollIntoView?.({ block: "nearest" });
+        return true;
+      }
+      panel.focus({ preventScroll: true });
+      return false;
+    };
+    if (focusFirst()) return;
+    const retry = (event: TransitionEvent) => {
+      if (event.propertyName !== "visibility") return;
+      if (!unmoved() || focusFirst()) stop();
+    };
+    const stop = () => {
+      wrapper.removeEventListener("transitionend", retry);
+      document.removeEventListener("keydown", stop, true);
+      document.removeEventListener("pointerdown", stop, true);
+    };
+    wrapper.addEventListener("transitionend", retry);
+    document.addEventListener("keydown", stop, true);
+    document.addEventListener("pointerdown", stop, true);
+    return stop;
+  }, [ready, isPresent, contentRef, takeFocusOnOpen]);
 
-  return createPortal(
-    <AnimatePresence>
-      {ctx.open ? (
-        <motion.div
-          data-morph-popover-portal=""
-          // Wrapper carries the shadow as a drop-shadow filter, which hugs the
-          // clipped shape below (box-shadow would just get clipped away).
-          variants={wrap}
-          initial={reduce ? { opacity: 0 } : "hidden"}
-          animate={reduce ? { opacity: 1 } : "show"}
-          exit={reduce ? { opacity: 0 } : "hidden"}
-          transition={reduce ? { duration: 0.12 } : undefined}
-          style={{
-            left,
-            top,
-            visibility: layout ? "visible" : "hidden",
-            transformOrigin: originFor(side, align),
-          }}
-          className="fixed z-[9999] [filter:drop-shadow(0_10px_18px_rgba(0,0,0,0.14))]"
-        >
-          <motion.div
-            ref={ctx.contentRef}
-            id={ctx.contentId}
-            role="dialog"
-            aria-labelledby={ctx.triggerId}
-            variants={clip}
-            style={{ borderRadius: radius }}
-            className={cn(
-              "overflow-hidden border border-border bg-background",
-              className,
-            )}
-          >
-            {children}
-          </motion.div>
-        </motion.div>
-      ) : null}
-    </AnimatePresence>,
-    document.body,
+  return (
+    <motion.div
+      data-morph-popover-portal=""
+      inert={!isPresent}
+      style={{
+        left,
+        top,
+        opacity: reduce ? fade : surfaceOpacity,
+        pointerEvents: isPresent ? "auto" : "none",
+        visibility: layout ? "visible" : "hidden",
+      }}
+      // A drop-shadow follows the clipped surface; box-shadow would be cut
+      // off by its own clip. Caller surface classes retain their old target.
+      className={cn(
+        "fixed z-[9999]",
+        shadow && "[filter:drop-shadow(0_10px_18px_rgba(0,0,0,0.14))]",
+      )}
+    >
+      <motion.div
+        ref={ctx.contentRef}
+        id={ctx.contentId}
+        role="dialog"
+        aria-labelledby={ctx.triggerId}
+        tabIndex={-1}
+        style={{
+          clipPath: reduce ? undefined : clipPath,
+          borderRadius: radius,
+          maxHeight: layout ? availableHeight : undefined,
+          overflowX: "hidden",
+          overflowY: "auto",
+        }}
+        className={cn(
+          // The panel holds focus when nothing inside it can. An inset ring
+          // stays inside the clip that would cut off an outline.
+          "overflow-hidden border border-border bg-background outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
+          className,
+        )}
+      >
+        {children}
+      </motion.div>
+    </motion.div>
   );
 }
