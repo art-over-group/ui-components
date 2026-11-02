@@ -2,12 +2,13 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import {
   getProEntry,
-  getProIndex,
+  getProCatalog,
+  getProMobileComponents,
   PRO_PACKAGE_MANAGERS,
   PRO_REGISTRY_SETUP,
   proInstallCommand,
+  type ProCatalogItem,
   type ProPackageManager,
-  type ProRegistryItem,
 } from "./pro-registry.js";
 
 type ProEnv = {
@@ -23,7 +24,7 @@ const error = (message: string) => ({
   content: [{ type: "text" as const, text: message }],
 });
 
-function score(item: Omit<ProRegistryItem, "$schema">, query: string) {
+function score(item: ProCatalogItem, query: string) {
   const normalized = query.toLowerCase();
   const name = item.name.toLowerCase();
   const title = item.title.toLowerCase();
@@ -33,12 +34,24 @@ function score(item: Omit<ProRegistryItem, "$schema">, query: string) {
   return 0;
 }
 
-function summary(item: Omit<ProRegistryItem, "$schema">) {
+function summary(item: ProCatalogItem) {
   return {
     slug: item.name,
     name: item.title,
     description: item.description,
+    platform: item.platform,
   };
+}
+
+/** Matches a search term against a mobile item's name, slug, kind and text. */
+function matchesMobile(
+  item: { slug: string; name: string; description: string; kind: string },
+  query: string,
+) {
+  const normalized = query.toLowerCase();
+  return [item.slug, item.name, item.description, item.kind].some((field) =>
+    field.toLowerCase().includes(normalized),
+  );
 }
 
 export function createProServer(env: ProEnv, authorization: string) {
@@ -56,8 +69,8 @@ export function createProServer(env: ProEnv, authorization: string) {
     },
     async () => {
       try {
-        const index = await getProIndex(env, authorization);
-        return json(index.items.map(summary));
+        const items = await getProCatalog(env, authorization);
+        return json(items.map(summary));
       } catch (cause) {
         return error(
           `Failed to list beUI Pro components: ${(cause as Error).message}`,
@@ -80,8 +93,8 @@ export function createProServer(env: ProEnv, authorization: string) {
     },
     async ({ query }) => {
       try {
-        const index = await getProIndex(env, authorization);
-        const matches = index.items
+        const items = await getProCatalog(env, authorization);
+        const matches = items
           .map((item) => ({ item, relevance: score(item, query) }))
           .filter(({ relevance }) => relevance > 0)
           .sort((a, b) => b.relevance - a.relevance)
@@ -90,6 +103,52 @@ export function createProServer(env: ProEnv, authorization: string) {
       } catch (cause) {
         return error(
           `Failed to search beUI Pro components: ${(cause as Error).message}`,
+        );
+      }
+    },
+  );
+
+  server.registerTool(
+    "list_mobile_components",
+    {
+      description:
+        "List the beUI Pro React Native blocks and screens for Expo and React Native that this license includes. Install one with get_component or get_install_command using its install slug (native-<slug>). Requires a Mobile or Web + Mobile license.",
+      inputSchema: {
+        query: z
+          .string()
+          .min(1)
+          .optional()
+          .describe("Optional search term, such as 'login', 'paywall', or 'tab bar'."),
+        kind: z
+          .enum(["block", "screen", "template"])
+          .optional()
+          .describe("Optional filter: a block, a full screen, or an app template."),
+      },
+    },
+    async ({ query, kind }) => {
+      try {
+        const components = await getProMobileComponents(env, authorization);
+        if (components.length === 0) {
+          return error(
+            "This license doesn't include beUI Pro for mobile. React Native items need a Mobile or Web + Mobile license: https://pro.beui.dev/#pricing",
+          );
+        }
+        return json(
+          components
+            .filter((item) => !kind || item.kind === kind)
+            .filter((item) => !query || matchesMobile(item, query))
+            .map((item) => ({
+              slug: item.install_slug,
+              name: item.name,
+              description: item.description,
+              kind: item.kind,
+              page: item.page_url,
+              expoSdk: item.expo_sdk,
+            })),
+        );
+      } catch (cause) {
+        return error(
+          `Failed to list beUI Pro mobile components: ${(cause as Error).message}`,
         );
       }
     },

@@ -2,6 +2,12 @@
 
 @custom-variant dark (&:where(.dark, .dark *));
 
+/* Height of the announcement strip above the header. The strip sits in the
+   page flow and scrolls away; the header and sidebars stick below it. */
+:root {
+    --announcement-h: 2.5rem;
+}
+
 :root {
     /* Light mode — beUI Current. */
     --background: oklch(99% 0 0);
@@ -35,8 +41,8 @@
     --card-foreground: var(--foreground);
     --popover: var(--card);
     --popover-foreground: var(--foreground);
-    --primary: var(--foreground);
-    --primary-foreground: var(--background);
+    --primary: #0285f7;
+    --primary-foreground: #ffffff;
     --secondary: var(--card);
     --secondary-foreground: var(--foreground);
     --muted: var(--card);
@@ -72,9 +78,6 @@
         oklch(72% 0.18 295) 100%
     );
 }
-
-/* Color theme presets (full token sets) are injected at runtime from
-   lib/themes.ts via PreferencesProvider, keyed by data-theme on <html>. */
 
 @theme inline {
     /* Strong easing curves shared across every component. */

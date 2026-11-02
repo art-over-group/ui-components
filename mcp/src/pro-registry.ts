@@ -16,10 +16,25 @@ export type ProRegistryItem = {
   files: ProRegistryFile[];
 };
 
-export type ProRegistryIndex = {
+/** An installable item as `/r/catalog.json` lists it: no file lists. */
+export type ProCatalogItem = {
   name: string;
-  homepage: string;
-  items: Array<Omit<ProRegistryItem, "$schema">>;
+  title: string;
+  description: string;
+  platform: "web" | "mobile";
+};
+
+/** A React Native item in the Pro agent index (`/r`), for Mobile licenses. */
+export type ProMobileComponent = {
+  slug: string;
+  name: string;
+  description: string;
+  platform: "mobile";
+  kind: "block" | "screen" | "template";
+  install_slug: string;
+  item_url: string;
+  page_url: string;
+  expo_sdk: number;
 };
 
 export class ProRegistryError extends Error {
@@ -59,14 +74,29 @@ async function fetchJson<T>(url: string, authorization: string): Promise<T> {
   return (await response.json()) as T;
 }
 
-export function getProIndex(
+/** The license's installable items for listing and search: about 90 KB,
+ * where registry.json, with every item's file list, is about 650 KB. */
+export async function getProCatalog(
   env: { PRO_REGISTRY_URL?: string },
   authorization: string,
 ) {
-  return fetchJson<ProRegistryIndex>(
-    `${base(env)}/r/registry.json`,
+  const catalog = await fetchJson<{ items: ProCatalogItem[] }>(
+    `${base(env)}/r/catalog.json`,
     authorization,
   );
+  return catalog.items;
+}
+
+/** The license's React Native items; empty without mobile access. */
+export async function getProMobileComponents(
+  env: { PRO_REGISTRY_URL?: string },
+  authorization: string,
+) {
+  const index = await fetchJson<{ mobile_components?: ProMobileComponent[] }>(
+    `${base(env)}/r`,
+    authorization,
+  );
+  return index.mobile_components ?? [];
 }
 
 export function getProEntry(
